@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Лабиринт - Игра</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+            max-width: 100vw;
+        }
+
+        .ui-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 520px;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .level-info, .score-info {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .game-wrapper {
+            position: relative;
+            background: #000;
+            border: 3px solid #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        #gameCanvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            cursor: none;
+        }
+
+        .controls-info {
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.8;
+            max-width: 520px;
+        }
+
+        .game-over-panel, .level-complete-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+        }
+
+        .game-over-panel.active, .level-complete-panel.active {
+            display: block;
+        }
+
+        .panel-title {
+            font-size: 32px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .panel-message {
+            font-size: 18px;
+            margin-bottom: 25px;
+            opacity: 0.9;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="ui-header">
+            <div class="level-info">Уровень: <span id="levelDisplay">1</span></div>
+            <div class="score-info">Очки: <span id="scoreDisplay">0</span></div>
+        </div>
+
+        <div class="game-wrapper">
+            <canvas id="gameCanvas" width="128" height="128"></canvas>
+        </div>
+
+        <div class="controls-info">
+            ⬆️ ⬇️ ⬅️ ➡️ или WASD
+        </div>
+    </div>
+
+    <div class="game-over-panel" id="gameOverPanel">
+        <div class="panel-title">💀 Игра окончена!</div>
+        <div class="panel-message">Вы коснулись стены или иголки</div>
+        <button class="btn" onclick="restartLevel()">🔄 Рестарт</button>
+    </div>
+
+    <div class="level-complete-panel" id="levelCompletePanel">
+        <div class="panel-title">🎉 Уровень пройден!</div>
+        <div class="panel-message">Отлично! Переходим дальше</div>
+        <button class="btn" onclick="nextLevel()">➡️ Следующий уровень</button>
+    </div>
+
+    <div class="loading" id="loading">Генерация лабиринта...</div>
+
+    <script>
+        // Telegram WebApp инициализация
+        let tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+        }
+
+        // Настройки игры
+        const CANVAS_SIZE = 128;
+        const CELL_SIZE = 2; // Размер клетки в пикселях (128 / 64 = 2)
+        const MAZE_WIDTH = 64;
+        const MAZE_HEIGHT = 64;
+        
+        // Элементы DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const gameOverPanel = document.getElementById('gameOverPanel');
+        const levelCompletePanel = document.getElementById('levelCompletePanel');
+        const loading = document.getElementById('loading');
+
+        // Состояние игры
+        let currentLevel = 1;
+        let score = 0;
+        let maze = [];
+        let spikes = [];
+        let player = { x: 1, y: 1, size: 3 };
+        let finish = { x: MAZE_WIDTH - 2, y: MAZE_HEIGHT - 2 };
+        let isGameActive = false;
+        let keys = {};
+
+        // Класс клетки лабиринта
+        class Cell {
+            constructor() {
+                this.visited = false;
+                this.walls = { top: true, bottom: true, left: true, right: true };
+            }
+        }
+
+        // Генерация лабиринта (Recursive Backtracking)
+        function generateMaze(seed = null) {
+            if (seed !== null) {
+                seedRandom(seed);
+            }
+
+            maze = [];
+            spikes = [];
+
+            // Инициализация клеток
+            for (let x = 0; x < MAZE_WIDTH; x++) {
+                maze[x] = [];
+                for (let y = 0; y < MAZE_HEIGHT; y++) {
+                    maze[x][y] = new Cell();
+                }
+            }
+
+            // Генерация лабиринта
+            let stack = [];
+            let current = { x: 0, y: 0 };
+            maze[current.x][current.y].visited = true;
+            stack.push(current);
+
+            while (stack.length > 0) {
+                let neighbors = getUnvisitedNeighbors(current.x, current.y);
+
+                if (neighbors.length > 0) {
+                    let next = neighbors[Math.floor(random() * neighbors.length)];
+                    removeWalls(current, next);
+                    current = next;
+                    maze[current.x][current.y].visited = true;
+                    stack.push(current);
+                } else {
+                    current = stack.pop();
+                }
+            }
+
+            // Добавляем иголки на стены
+            addSpikes();
+
+            // Убираем стены у старта и финиша
+            maze[0][0].walls.bottom = false;
+            maze[0][1].walls.top = false;
+            maze[MAZE_WIDTH - 1][MAZE_HEIGHT - 1].walls.top = false;
+            maze[MAZE_WIDTH - 1][MAZE_HEIGHT - 2].walls.bottom = false;
+        }
+
+        function getUnvisitedNeighbors(x, y) {
+            let neighbors = [];
+
+            if (y > 0 && !maze[x][y - 1].visited) neighbors.push({ x, y: y - 1 });
+            if (y < MAZE_HEIGHT - 1 && !maze[x][y + 1].visited) neighbors.push({ x, y: y + 1 });
+            if (x > 0 && !maze[x - 1][y].visited) neighbors.push({ x: x - 1, y });
+            if (x < MAZE_WIDTH - 1 && !maze[x + 1][y].visited) neighbors.push({ x: x + 1, y });
+
+            return neighbors;
+        }
+
+        function removeWalls(current, next) {
+            let dx = next.x - current.x;
+            let dy = next.y - current.y;
+
+            if (dx === 1) {
+                maze[current.x][current.y].walls.right = false;
+                maze[next.x][next.y].walls.left = false;
+            } else if (dx === -1) {
+                maze[current.x][current.y].walls.left = false;
+                maze[next.x][next.y].walls.right = false;
+            } else if (dy === 1) {
+                maze[current.x][current.y].walls.bottom = false;
+                maze[next.x][next.y].walls.top = false;
+            } else if (dy === -1) {
+                maze[current.x][current.y].walls.top = false;
+                maze[next.x][next.y].walls.bottom = false;
+            }
+        }
+
+        function addSpikes() {
+            const spikeCount = Math.floor((MAZE_WIDTH * MAZE_HEIGHT) / 15);
+
+            for (let i = 0; i < spikeCount; i++) {
+                let x = Math.floor(random() * MAZE_WIDTH);
+                let y = Math.floor(random() * MAZE_HEIGHT);
+                let cell = maze[x][y];
+
+                // Выбираем случайную стену с иголкой
+                let walls = [];
+                if (cell.walls.top) walls.push({ x: x * CELL_SIZE + CELL_SIZE / 2, y: y * CELL_SIZE, wall: 'top' });
+                if (cell.walls.bottom) walls.push({ x: x * CELL_SIZE + CELL_SIZE / 2, y: y * CELL_SIZE + CELL_SIZE, wall: 'bottom' });
+                if (cell.walls.left) walls.push({ x: x * CELL_SIZE, y: y * CELL_SIZE + CELL_SIZE / 2, wall: 'left' });
+                if (cell.walls.right) walls.push({ x: x * CELL_SIZE + CELL_SIZE, y: y * CELL_SIZE + CELL_SIZE / 2, wall: 'right' });
+
+                if (walls.length > 0) {
+                    let spike = walls[Math.floor(random() * walls.length)];
+                    spikes.push({
+                        x: spike.x,
+                        y: spike.y,
+                        size: 2
+                    });
+                }
+            }
+        }
+
+        // Генератор случайных чисел с seed
+        let seed = Date.now();
+        function seedRandom(s) {
+            seed = s;
+        }
+
+        function random() {
+            seed = (seed * 9301 + 49297) % 233280;
+            return seed / 233280;
+        }
+
+        // Отрисовка
+        function draw() {
+            // Очистка
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+            // Рисуем пол
+            ctx.fillStyle = '#333';
+            for (let x = 0; x < MAZE_WIDTH; x++) {
+                for (let y = 0; y < MAZE_HEIGHT; y++) {
+                    ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                }
+            }
+
+            // Рисуем стены
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            for (let x = 0; x < MAZE_WIDTH; x++) {
+                for (let y = 0; y < MAZE_HEIGHT; y++) {
+                    let cell = maze[x][y];
+                    let px = x * CELL_SIZE;
+                    let py = y * CELL_SIZE;
+
+                    if (cell.walls.top) {
+                        ctx.moveTo(px, py);
+                        ctx.lineTo(px + CELL_SIZE, py);
+                    }
+                    if (cell.walls.bottom) {
+                        ctx.moveTo(px, py + CELL_SIZE);
+                        ctx.lineTo(px + CELL_SIZE, py + CELL_SIZE);
+                    }
+                    if (cell.walls.left) {
+                        ctx.moveTo(px, py);
+                        ctx.lineTo(px, py + CELL_SIZE);
+                    }
+                    if (cell.walls.right) {
+                        ctx.moveTo(px + CELL_SIZE, py);
+                        ctx.lineTo(px + CELL_SIZE, py + CELL_SIZE);
+                    }
+                }
+            }
+            ctx.stroke();
+
+            // Рисуем иголки
+            ctx.fillStyle = '#ff0000';
+            for (let spike of spikes) {
+                ctx.beginPath();
+                ctx.arc(spike.x, spike.y, spike.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Рисуем финиш
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(
+                finish.x * CELL_SIZE - CELL_SIZE / 4,
+                finish.y * CELL_SIZE - CELL_SIZE / 4,
+                CELL_SIZE * 1.5,
+                CELL_SIZE * 1.5
+            );
+
+            // Рисуем игрока
+            ctx.fillStyle = '#00aaff';
+            ctx.beginPath();
+            ctx.arc(
+                player.x * CELL_SIZE + CELL_SIZE / 2,
+                player.y * CELL_SIZE + CELL_SIZE / 2,
+                player.size,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+
+        // Обновление игры
+        function update() {
+            if (!isGameActive) return;
+
+            let newX = player.x;
+            let newY = player.y;
+            let moved = false;
+
+            const speed = 0.05;
+
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) {
+                newY -= speed;
+                moved = true;
+            }
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) {
+                newY += speed;
+                moved = true;
+            }
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+                newX -= speed;
+                moved = true;
+            }
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+                newX += speed;
+                moved = true;
+            }
+
+            if (moved) {
+                // Проверка коллизии со стенами
+                let playerPixelX = newX * CELL_SIZE + CELL_SIZE / 2;
+                let playerPixelY = newY * CELL_SIZE + CELL_SIZE / 2;
+                let playerRadius = player.size;
+
+                // Получаем клетки вокруг игрока
+                let cellX = Math.floor(newX);
+                let cellY = Math.floor(newY);
+                let checkCells = [
+                    { x: cellX, y: cellY },
+                    { x: cellX + 1, y: cellY },
+                    { x: cellX, y: cellY + 1 },
+                    { x: cellX + 1, y: cellY + 1 }
+                ];
+
+                let canMoveX = true;
+                let canMoveY = true;
+
+                for (let cell of checkCells) {
+                    if (cell.x >= 0 && cell.x < MAZE_WIDTH && cell.y >= 0 && cell.y < MAZE_HEIGHT) {
+                        let cellData = maze[cell.x][cell.y];
+                        let cellPx = cell.x * CELL_SIZE;
+                        let cellPy = cell.y * CELL_SIZE;
+
+                        // Проверка стен
+                        if (cellData.walls.left && playerPixelX - playerRadius < cellPx) canMoveX = false;
+                        if (cellData.walls.right && playerPixelX + playerRadius > cellPx + CELL_SIZE) canMoveX = false;
+                        if (cellData.walls.top && playerPixelY - playerRadius < cellPy) canMoveY = false;
+                        if (cellData.walls.bottom && playerPixelY + playerRadius > cellPy + CELL_SIZE) canMoveY = false;
+                    }
+                }
+
+                // Проверка границ
+                if (newX * CELL_SIZE - playerRadius < 0 || newX * CELL_SIZE + playerRadius > CANVAS_SIZE) canMoveX = false;
+                if (newY * CELL_SIZE - playerRadius < 0 || newY * CELL_SIZE + playerRadius > CANVAS_SIZE) canMoveY = false;
+
+                if (canMoveX) player.x = newX;
+                if (canMoveY) player.y = newY;
+
+                // Проверка коллизии с иголками
+                for (let spike of spikes) {
+                    let dx = (player.x * CELL_SIZE + CELL_SIZE / 2) - spike.x;
+                    let dy = (player.y * CELL_SIZE + CELL_SIZE / 2) - spike.y;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < player.size + spike.size) {
+                        gameOver('Касание иголки!');
+                        return;
+                    }
+                }
+
+                // Проверка достижения финиша
+                let finishPx = finish.x * CELL_SIZE + CELL_SIZE / 2;
+                let finishPy = finish.y * CELL_SIZE + CELL_SIZE / 2;
+                let finishDx = (player.x * CELL_SIZE + CELL_SIZE / 2) - finishPx;
+                let finishDy = (player.y * CELL_SIZE + CELL_SIZE / 2) - finishPy;
+                let finishDistance = Math.sqrt(finishDx * finishDx + finishDy * finishDy);
+
+                if (finishDistance < CELL_SIZE) {
+                    levelComplete();
+                    return;
+                }
+            }
+        }
+
+        // Игровой цикл
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Начало уровня
+        function startLevel(level) {
+            currentLevel = level;
+            isGameActive = true;
+            player.x = 1;
+            player.y = 1;
+            finish.x = MAZE_WIDTH - 2;
+            finish.y = MAZE_HEIGHT - 2;
+
+            loading.style.display = 'block';
+            setTimeout(() => {
+                generateMaze(Date.now() + level * 1000);
+                loading.style.display = 'none';
+                updateUI();
+                gameOverPanel.classList.remove('active');
+                levelCompletePanel.classList.remove('active');
+            }, 100);
+        }
+
+        // Конец игры
+        function gameOver(reason) {
+            isGameActive = false;
+            gameOverPanel.querySelector('.panel-message').textContent = reason;
+            gameOverPanel.classList.add('active');
+
+            // Отправка результатов в Telegram (если доступно)
+            if (tg && tg.sendData) {
+                tg.sendData(JSON.stringify({
+                    type: 'game_over',
+                    level: currentLevel,
+                    score: score
+                }));
+            }
+        }
+
+        // Уровень пройден
+        function levelComplete() {
+            isGameActive = false;
+            score += currentLevel * 100;
+            levelCompletePanel.classList.add('active');
+            updateUI();
+
+            // Отправка результатов в Telegram
+            if (tg && tg.sendData) {
+                tg.sendData(JSON.stringify({
+                    type: 'level_complete',
+                    level: currentLevel,
+                    score: score
+                }));
+            }
+        }
+
+        // Следующий уровень
+        function nextLevel() {
+            levelCompletePanel.classList.remove('active');
+            startLevel(currentLevel + 1);
+        }
+
+        // Рестарт
+        function restartLevel() {
+            gameOverPanel.classList.remove('active');
+            startLevel(currentLevel);
+        }
+
+        // Обновление UI
+        function updateUI() {
+            levelDisplay.textContent = currentLevel;
+            scoreDisplay.textContent = score;
+        }
+
+        // Обработка клавиатуры
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            e.preventDefault();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Предотвращение скролла на мобильных
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        // Инициализация
+        startLevel(1);
+        gameLoop();
+
+        // Настройка размера canvas для отображения
+        function resizeCanvas() {
+            const wrapper = document.querySelector('.game-wrapper');
+            const maxWidth = Math.min(window.innerWidth - 40, 520);
+            const scale = maxWidth / CANVAS_SIZE;
+            canvas.style.width = (CANVAS_SIZE * scale) + 'px';
+            canvas.style.height = (CANVAS_SIZE * scale) + 'px';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+    </script>
+</body>
+</html>
+
