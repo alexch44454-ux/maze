@@ -310,8 +310,98 @@
             }
         }
 
-        // Генерация лабиринта (Recursive Backtracking)
+        // Генерация первого уровня - фиксированная карта
+        // Путь: вправо (20 клеток) -> вниз (20 клеток) = 40 клеток = 80 пикселей
+        // Ширина пути: 3 пикселя = 1.5 клетки, делаем 2 клетки шириной
+        function generateLevel1() {
+            maze = [];
+            spikes = [];
+
+            // Инициализация клеток - все стены закрыты
+            for (let x = 0; x < MAZE_WIDTH; x++) {
+                maze[x] = [];
+                for (let y = 0; y < MAZE_HEIGHT; y++) {
+                    maze[x][y] = new Cell();
+                }
+            }
+
+            // Параметры пути
+            // 40 пикселей = 20 клеток (при CELL_SIZE=2)
+            // Разделим: 10 клеток вправо + 10 клеток вниз = 20 клеток = 40 пикселей
+            const START_CELL_X = 5;  // Начальная позиция X в клетках
+            const START_CELL_Y = 5;  // Начальная позиция Y в клетках
+            const PATH_WIDTH_CELLS = 2; // Ширина пути в клетках (4 пикселя, близко к 3)
+            const HORIZONTAL_CELLS = 10; // Горизонтальная длина в клетках (20 пикселей)
+            const VERTICAL_CELLS = 10;   // Вертикальная длина в клетках (20 пикселей)
+
+            // Создаем горизонтальный путь (вправо)
+            for (let x = START_CELL_X; x < START_CELL_X + HORIZONTAL_CELLS; x++) {
+                for (let w = 0; w < PATH_WIDTH_CELLS; w++) {
+                    let y = START_CELL_Y + w;
+                    if (x >= 0 && x < MAZE_WIDTH && y >= 0 && y < MAZE_HEIGHT) {
+                        // Убираем правую стену для движения вправо
+                        if (x < MAZE_WIDTH - 1) {
+                            maze[x][y].walls.right = false;
+                            maze[x + 1][y].walls.left = false;
+                        }
+                        // Убираем верхние и нижние стены для ширины пути
+                        if (w < PATH_WIDTH_CELLS - 1) {
+                            maze[x][y].walls.bottom = false;
+                            if (y < MAZE_HEIGHT - 1) maze[x][y + 1].walls.top = false;
+                        }
+                    }
+                }
+            }
+
+            // Создаем вертикальный путь (вниз) от конца горизонтальной части
+            const TURN_X = START_CELL_X + HORIZONTAL_CELLS - 1;
+            for (let y = START_CELL_Y; y < START_CELL_Y + VERTICAL_CELLS; y++) {
+                for (let w = 0; w < PATH_WIDTH_CELLS; w++) {
+                    let x = TURN_X + w;
+                    if (x >= 0 && x < MAZE_WIDTH && y >= 0 && y < MAZE_HEIGHT) {
+                        // Убираем нижнюю стену для движения вниз
+                        if (y < MAZE_HEIGHT - 1) {
+                            maze[x][y].walls.bottom = false;
+                            maze[x][y + 1].walls.top = false;
+                        }
+                        // Убираем левые и правые стены для ширины пути
+                        if (w < PATH_WIDTH_CELLS - 1) {
+                            maze[x][y].walls.right = false;
+                            if (x < MAZE_WIDTH - 1) maze[x + 1][y].walls.left = false;
+                        }
+                    }
+                }
+            }
+
+            // Убираем стены в углу поворота
+            if (TURN_X < MAZE_WIDTH - 1 && START_CELL_Y < MAZE_HEIGHT - 1) {
+                maze[TURN_X][START_CELL_Y].walls.bottom = false;
+                maze[TURN_X][START_CELL_Y + 1].walls.top = false;
+                if (TURN_X + 1 < MAZE_WIDTH) {
+                    maze[TURN_X + 1][START_CELL_Y].walls.bottom = false;
+                    maze[TURN_X + 1][START_CELL_Y + 1].walls.top = false;
+                }
+            }
+
+            // Устанавливаем стартовую позицию игрока
+            player.x = START_CELL_X + 0.5;
+            player.y = START_CELL_Y + 1;
+
+            // Устанавливаем финиш в конце вертикальной части
+            finish.x = TURN_X + 1;
+            finish.y = START_CELL_Y + VERTICAL_CELLS - 1;
+
+            // Не добавляем иголки на первый уровень
+        }
+
+        // Генерация лабиринта (Recursive Backtracking) для уровней > 1
         function generateMaze(seed = null) {
+            // Для первого уровня используем фиксированную карту
+            if (currentLevel === 1) {
+                generateLevel1();
+                return;
+            }
+
             if (seed !== null) {
                 seedRandom(seed);
             }
@@ -606,10 +696,15 @@
         function startLevel(level) {
             currentLevel = level;
             isGameActive = true;
-            player.x = 1;
-            player.y = 1;
-            finish.x = MAZE_WIDTH - 2;
-            finish.y = MAZE_HEIGHT - 2;
+            
+            // Для уровней > 1 используем стандартные позиции
+            if (level > 1) {
+                player.x = 1;
+                player.y = 1;
+                finish.x = MAZE_WIDTH - 2;
+                finish.y = MAZE_HEIGHT - 2;
+            }
+            // Для первого уровня позиции устанавливаются в generateLevel1()
 
             // Скрываем меню и показываем игру
             document.getElementById('mainMenu').classList.add('hidden');
