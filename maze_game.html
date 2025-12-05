@@ -392,6 +392,11 @@
             finish.y = START_CELL_Y + VERTICAL_CELLS - 1;
 
             // Не добавляем иголки на первый уровень
+            
+            console.log('Первый уровень сгенерирован');
+            console.log('Игрок:', player.x, player.y);
+            console.log('Финиш:', finish.x, finish.y);
+            console.log('Размер лабиринта:', maze.length, 'x', maze[0] ? maze[0].length : 0);
         }
 
         // Генерация лабиринта (Recursive Backtracking) для уровней > 1
@@ -516,26 +521,37 @@
 
         // Отрисовка
         function draw() {
-            // Очистка
-            ctx.fillStyle = '#222';
+            // Очистка - полностью черный фон
+            ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-            // Рисуем пол
-            ctx.fillStyle = '#333';
+            // Проверяем, есть ли лабиринт
+            if (!maze || maze.length === 0) {
+                // Если лабиринта нет, рисуем просто черный экран
+                return;
+            }
+
+            // Рисуем пол - темно-серый
+            ctx.fillStyle = '#111111';
             for (let x = 0; x < MAZE_WIDTH; x++) {
                 for (let y = 0; y < MAZE_HEIGHT; y++) {
-                    ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    if (maze[x] && maze[x][y]) {
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    }
                 }
             }
 
-            // Рисуем стены
-            ctx.strokeStyle = '#fff';
+            // Рисуем стены - белые
+            ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 1;
             ctx.beginPath();
 
             for (let x = 0; x < MAZE_WIDTH; x++) {
+                if (!maze[x]) continue;
                 for (let y = 0; y < MAZE_HEIGHT; y++) {
                     let cell = maze[x][y];
+                    if (!cell) continue;
+                    
                     let px = x * CELL_SIZE;
                     let py = y * CELL_SIZE;
 
@@ -560,33 +576,39 @@
             ctx.stroke();
 
             // Рисуем иголки
-            ctx.fillStyle = '#ff0000';
-            for (let spike of spikes) {
-                ctx.beginPath();
-                ctx.arc(spike.x, spike.y, spike.size, 0, Math.PI * 2);
-                ctx.fill();
+            if (spikes && spikes.length > 0) {
+                ctx.fillStyle = '#ff0000';
+                for (let spike of spikes) {
+                    ctx.beginPath();
+                    ctx.arc(spike.x, spike.y, spike.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
 
-            // Рисуем финиш
-            ctx.fillStyle = '#00ff00';
-            ctx.fillRect(
-                finish.x * CELL_SIZE - CELL_SIZE / 4,
-                finish.y * CELL_SIZE - CELL_SIZE / 4,
-                CELL_SIZE * 1.5,
-                CELL_SIZE * 1.5
-            );
+            // Рисуем финиш - зеленый
+            if (finish && finish.x !== undefined && finish.y !== undefined) {
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(
+                    finish.x * CELL_SIZE - CELL_SIZE / 4,
+                    finish.y * CELL_SIZE - CELL_SIZE / 4,
+                    CELL_SIZE * 1.5,
+                    CELL_SIZE * 1.5
+                );
+            }
 
-            // Рисуем игрока
-            ctx.fillStyle = '#00aaff';
-            ctx.beginPath();
-            ctx.arc(
-                player.x * CELL_SIZE + CELL_SIZE / 2,
-                player.y * CELL_SIZE + CELL_SIZE / 2,
-                player.size,
-                0,
-                Math.PI * 2
-            );
-            ctx.fill();
+            // Рисуем игрока - синий
+            if (player && player.x !== undefined && player.y !== undefined) {
+                ctx.fillStyle = '#00aaff';
+                ctx.beginPath();
+                ctx.arc(
+                    player.x * CELL_SIZE + CELL_SIZE / 2,
+                    player.y * CELL_SIZE + CELL_SIZE / 2,
+                    player.size || 3,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
         }
 
         // Обновление игры
@@ -718,6 +740,8 @@
                 updateUI();
                 gameOverPanel.classList.remove('active');
                 levelCompletePanel.classList.remove('active');
+                // Принудительно перерисовываем после генерации
+                draw();
             }, 100);
         }
 
@@ -839,6 +863,11 @@
         // Инициализация - показываем главное меню
         // Не запускаем игру автоматически
         gameLoop();
+        
+        // Отладочная информация
+        console.log('Игра инициализирована');
+        console.log('Canvas размер:', CANVAS_SIZE, 'x', CANVAS_SIZE);
+        console.log('Размер клетки:', CELL_SIZE);
 
         // Настройка размера canvas для отображения
         function resizeCanvas() {
@@ -854,6 +883,7 @@
     </script>
 </body>
 </html>
+
 
 
 
